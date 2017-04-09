@@ -8,6 +8,7 @@ from .csshtmlheader import CSSHTMLHeaderPreprocessor
 from .highlightmagics import HighlightMagicsPreprocessor
 from .clearoutput import ClearOutputPreprocessor
 from .execute import ExecutePreprocessor
+from .attachments import AttachmentInlinerPreprocessor
 
 # decorated function Preprocessors
 from .coalescestreams import coalesce_streams

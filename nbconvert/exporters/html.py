@@ -54,6 +54,9 @@ class HTMLExporter(TemplateExporter):
             'CSSHTMLHeaderPreprocessor':{
                 'enabled':True
                 },
+            'AttachmentInlinerPreprocessor':{
+                'enabled':True
+                },
             'HighlightMagicsPreprocessor': {
                 'enabled':True
                 }
