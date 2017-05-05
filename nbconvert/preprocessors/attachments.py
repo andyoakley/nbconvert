@@ -33,8 +33,8 @@ class AttachmentInlinerPreprocessor(Preprocessor):
             mimetype = list(attachment)[0]
 
             cell.source = cell.source.replace(
-                    'attachment:%s' % name,
-                    'data:%s;base64,%s' % (mimetype, attachment[mimetype])
-                        )
-        
+                m.group(0),
+                "<img src='data:%s;base64,%s' />" % (mimetype, attachment[mimetype])
+            )
+            
         return cell, resources
