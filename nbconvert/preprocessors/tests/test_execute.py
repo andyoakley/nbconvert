@@ -7,6 +7,7 @@ Module with tests for the execute preprocessor.
 # Copyright (c) IPython Development Team.
 # Distributed under the terms of the Modified BSD License.
 
+from base64 import b64encode, b64decode
 import copy
 import glob
 import io
@@ -15,18 +16,30 @@ import re
 
 import nbformat
 import sys
+import pytest
 
 from .base import PreprocessorTestsBase
-from ..execute import ExecutePreprocessor, CellExecutionError
+from ..execute import ExecutePreprocessor, CellExecutionError, executenb
 
 from nbconvert.filters import strip_ansi
-from nose.tools import assert_raises, assert_in
 from testpath import modified_env
+from ipython_genutils.py3compat import string_types
 
 addr_pat = re.compile(r'0x[0-9a-f]{7,9}')
+ipython_input_pat = re.compile(r'<ipython-input-\d+-[0-9a-f]+>')
+current_dir = os.path.dirname(__file__)
+
+def _normalize_base64(b64_text):
+    # if it's base64, pass it through b64 decode/encode to avoid
+    # equivalent values from being considered unequal
+    try:
+        return b64encode(b64decode(b64_text.encode('ascii'))).decode('ascii')
+    except (ValueError, TypeError):
+        return b64_text
 
 class TestExecute(PreprocessorTestsBase):
     """Contains test functions for execute.py"""
+    maxDiff = None
 
     @staticmethod
     def normalize_output(output):
@@ -41,10 +54,14 @@ class TestExecute(PreprocessorTestsBase):
         if 'text/plain' in output.get('data', {}):
             output['data']['text/plain'] = \
                 re.sub(addr_pat, '<HEXADDR>', output['data']['text/plain'])
+        for key, value in output.get('data', {}).items():
+            if isinstance(value, string_types):
+                output['data'][key] = _normalize_base64(value)
         if 'traceback' in output:
-            tb = []
-            for line in output['traceback']:
-                tb.append(strip_ansi(line))
+            tb = [
+                re.sub(ipython_input_pat, '<IPY-INPUT>', strip_ansi(line))
+                for line in output['traceback']
+            ]
             output['traceback'] = tb
 
         return output
@@ -104,8 +121,8 @@ class TestExecute(PreprocessorTestsBase):
 
     def test_run_notebooks(self):
         """Runs a series of test notebooks and compares them to their actual output"""
-        current_dir = os.path.dirname(__file__)
         input_files = glob.glob(os.path.join(current_dir, 'files', '*.ipynb'))
+        shared_opts = dict(kernel_name="python")
         for filename in input_files:
             if os.path.basename(filename) == "Disable Stdin.ipynb":
                 continue
@@ -117,12 +134,12 @@ class TestExecute(PreprocessorTestsBase):
                 opts = dict()
             res = self.build_resources()
             res['metadata']['path'] = os.path.dirname(filename)
+            opts.update(shared_opts)
             input_nb, output_nb = self.run_notebook(filename, opts, res)
             self.assert_notebooks_equal(input_nb, output_nb)
 
     def test_empty_path(self):
         """Can the kernel be started when the path is empty?"""
-        current_dir = os.path.dirname(__file__)
         filename = os.path.join(current_dir, 'files', 'HelloWorld.ipynb')
         res = self.build_resources()
         res['metadata']['path'] = ''
@@ -131,7 +148,6 @@ class TestExecute(PreprocessorTestsBase):
 
     def test_disable_stdin(self):
         """Test disabling standard input"""
-        current_dir = os.path.dirname(__file__)
         filename = os.path.join(current_dir, 'files', 'Disable Stdin.ipynb')
         res = self.build_resources()
         res['metadata']['path'] = os.path.dirname(filename)
@@ -159,7 +175,8 @@ class TestExecute(PreprocessorTestsBase):
         except NameError:
             exception = RuntimeError
 
-        assert_raises(exception, self.run_notebook, filename, dict(timeout=1), res)
+        with pytest.raises(exception):
+            self.run_notebook(filename, dict(timeout=1), res)
 
     def test_timeout_func(self):
         """Check that an error is raised when a computation times out"""
@@ -175,24 +192,42 @@ class TestExecute(PreprocessorTestsBase):
         def timeout_func(source):
             return 10
 
-        assert_raises(exception, self.run_notebook, filename, dict(timeout_func=timeout_func), res)
+        with pytest.raises(exception):
+            self.run_notebook(filename, dict(timeout_func=timeout_func), res)
 
     def test_allow_errors(self):
         """
-        Check that conversion continues if ``allow_errors`` is False.
+        Check that conversion halts if ``allow_errors`` is False.
         """
         current_dir = os.path.dirname(__file__)
         filename = os.path.join(current_dir, 'files', 'Skip Exceptions.ipynb')
         res = self.build_resources()
         res['metadata']['path'] = os.path.dirname(filename)
-        with assert_raises(CellExecutionError) as exc:
+        with pytest.raises(CellExecutionError) as exc:
             self.run_notebook(filename, dict(allow_errors=False), res)
-        self.assertIsInstance(str(exc.exception), str)
-        if sys.version_info >= (3, 0):
-            assert_in(u"# üñîçø∂é", str(exc.exception))
-        else:
-            assert_in(u"# üñîçø∂é".encode('utf8', 'replace'),
-                      str(exc.exception))
+            self.assertIsInstance(str(exc.value), str)
+            if sys.version_info >= (3, 0):
+                assert u"# üñîçø∂é" in str(exc.value)
+            else:
+                assert u"# üñîçø∂é".encode('utf8', 'replace') in str(exc.value)
+
+    def test_force_raise_errors(self):
+        """
+        Check that conversion halts if the ``force_raise_errors`` traitlet on
+        ExecutePreprocessor is set to True.
+        """
+        current_dir = os.path.dirname(__file__)
+        filename = os.path.join(current_dir, 'files',
+                                'Skip Exceptions with Cell Tags.ipynb')
+        res = self.build_resources()
+        res['metadata']['path'] = os.path.dirname(filename)
+        with pytest.raises(CellExecutionError) as exc:
+            self.run_notebook(filename, dict(force_raise_errors=True), res)
+            self.assertIsInstance(str(exc.value), str)
+            if sys.version_info >= (3, 0):
+                assert u"# üñîçø∂é" in str(exc.value)
+            else:
+                assert u"# üñîçø∂é".encode('utf8', 'replace') in str(exc.value)
 
     def test_custom_kernel_manager(self):
         from .fake_kernelmanager import FakeCustomKernelManager
@@ -223,3 +258,15 @@ class TestExecute(PreprocessorTestsBase):
 
         for method, call_count in expected:
             self.assertNotEqual(call_count, 0, '{} was called'.format(method))
+
+    def test_execute_function(self):
+        # Test the executenb() convenience API
+        current_dir = os.path.dirname(__file__)
+        filename = os.path.join(current_dir, 'files', 'HelloWorld.ipynb')
+
+        with io.open(filename) as f:
+            input_nb = nbformat.read(f, 4)
+
+        original = copy.deepcopy(input_nb)
+        executed = executenb(original, os.path.dirname(filename))
+        self.assert_notebooks_equal(original, executed)

@@ -138,8 +138,19 @@ This template does not define a docclass, the inheriting class must define this.
     % Math Jax compatability definitions
     \def\gt{>}
     \def\lt{<}
+    \let\Oldtex\TeX
+    \let\Oldlatex\LaTeX
+    \renewcommand{\TeX}{\textrm{\Oldtex}}
+    \renewcommand{\LaTeX}{\textrm{\Oldlatex}}
     % Document parameters
-    ((* block title *))\title{((( resources.metadata.name | ascii_only | escape_latex )))}((* endblock title *))
+    % Document title
+    ((* block title -*))
+    ((*- if "title" in nb.metadata *))
+    \title{((( nb.metadata.get("title", "") | ascii_only | escape_latex )))}
+    ((*- else *))
+    \title{((( resources.metadata.name | ascii_only | escape_latex )))}
+    ((*- endif -*))
+    ((*- endblock title *))
     ((* block date *))((* endblock date *))
     ((* block author *))((* endblock author *))
     ((* endblock definitions *))

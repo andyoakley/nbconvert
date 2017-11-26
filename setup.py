@@ -66,7 +66,7 @@ package_data = {
 }
 
 
-notebook_css_version = '4.3.0'
+notebook_css_version = '5.1.0'
 css_url = "https://cdn.jupyter.org/notebook/%s/style/style.min.css" % notebook_css_version
 
 class FetchCSS(Command):
@@ -185,25 +185,25 @@ setup_args = dict(
 
 setuptools_args = {}
 install_requires = setuptools_args['install_requires'] = [
-    'mistune!=0.6',
+    'mistune>=0.8.1',
     'jinja2',
     'pygments',
     'traitlets>=4.2',
     'jupyter_core',
-    'nbformat',
+    'nbformat>=4.4',
     'entrypoints>=0.2.2',
     'bleach',
     'pandocfilters>=1.4.1',
-    'testpath', 
+    'testpath',
 ]
 
-extras_require = setuptools_args['extras_require'] = {
-    # FIXME: tests still require nose for some utility calls,
-    # but we are running with pytest
-    'test': ['pytest', 'pytest-cov', 'nose', 'ipykernel', 'jupyter_client'],
+extra_requirements = {
+    'test': ['pytest', 'pytest-cov', 'ipykernel', 'jupyter_client>=4.2'],
     'serve': ['tornado>=4.0'],
     'execute': ['jupyter_client>=4.2'],
 }
+extra_requirements['all'] = sum(extra_requirements.values(), [])
+setuptools_args['extras_require'] = extra_requirements
 
 if 'setuptools' in sys.modules:
     from setuptools.command.develop import develop

@@ -1,13 +1,20 @@
-include COPYING.md
+include LICENSE
 include CONTRIBUTING.md
 include README.md
+include .mailmap
+include MANIFEST.in
+include nbconvert/templates/skeleton/Makefile
+include nbconvert/tests/README.md
 
 # Documentation
 graft docs
 exclude docs/\#*
+exclude readthedocs.yml
+exclude codecov.yml
 
 # Examples
 graft examples
+graft scripts
 
 # docs subdirs we want to skip
 prune docs/build

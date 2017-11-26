@@ -7,8 +7,6 @@
 import io as stdlib_io
 import sys
 
-import nose.tools as nt
-
 from ipython_genutils.testing.decorators import skipif
 from ..io import unicode_std_stream
 from ipython_genutils.py3compat import PY3
@@ -33,7 +31,7 @@ def test_UnicodeStdStream():
         unicode_std_stream().write(sample)
 
         output = stdoutb.getvalue().decode('utf-8')
-        nt.assert_equal(output, sample)
+        assert output == sample
         assert not stdout.closed
     finally:
         sys.stdout = orig_stdout
@@ -44,7 +42,7 @@ def test_UnicodeStdStream_nowrap():
     orig_stdout = sys.stdout
     sys.stdout = StringIO()
     try:
-        nt.assert_is(unicode_std_stream(), sys.stdout)
+        assert unicode_std_stream() is sys.stdout
         assert not sys.stdout.closed
     finally:
         sys.stdout = orig_stdout

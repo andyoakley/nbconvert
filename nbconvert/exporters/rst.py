@@ -20,12 +20,19 @@ class RSTExporter(TemplateExporter):
 
     @default('template_file')
     def _template_file_default(self):
-        return 'rst'
+        return 'rst.tpl'
 
     output_mimetype = 'text/restructuredtext'
 
     @property
     def default_config(self):
-        c = Config({'ExtractOutputPreprocessor':{'enabled':True}})
+        c = Config({
+            'ExtractOutputPreprocessor':{
+                'enabled':True
+                },
+            'HighlightMagicsPreprocessor': {
+                'enabled':True
+                },
+            })
         c.merge(super(RSTExporter,self).default_config)
         return c
