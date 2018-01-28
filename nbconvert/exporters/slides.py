@@ -6,7 +6,7 @@
 from copy import deepcopy
 from warnings import warn
 
-from traitlets import Unicode, default
+from traitlets import Bool, Unicode, default
 
 from .html import HTMLExporter
 
@@ -76,11 +76,16 @@ class SlidesExporter(HTMLExporter):
     """Exports HTML slides with reveal.js"""
 
     reveal_url_prefix = Unicode(
-        help="""The URL prefix for reveal.js.
-        This can be a a relative URL for a local copy of reveal.js,
-        or point to a CDN.
-
-        For speaker notes to work, a local reveal.js prefix must be used.
+        help="""The URL prefix for reveal.js (version 3.x).
+        This defaults to the reveal CDN, but can be any url pointing to a copy 
+        of reveal.js. 
+        
+        For speaker notes to work, this must be a relative path to a local 
+        copy of reveal.js: e.g., "reveal.js".
+        
+        See the usage documentation
+        (https://nbconvert.readthedocs.io/en/latest/usage.html#reveal-js-html-slideshow)
+        for more details.
         """
     ).tag(config=True)
 
@@ -90,16 +95,32 @@ class SlidesExporter(HTMLExporter):
             warn("Please update RevealHelpPreprocessor.url_prefix to "
                  "SlidesExporter.reveal_url_prefix in config files.")
             return self.config.RevealHelpPreprocessor.url_prefix
-        return 'reveal.js'
+        return 'https://cdnjs.cloudflare.com/ajax/libs/reveal.js/3.5.0'
 
     reveal_theme = Unicode('simple',
         help="""
         Name of the reveal.js theme to use.
 
-        We look for a file with this name under `reveal_url_prefix`/css/theme/`reveal_theme`.css.
+        We look for a file with this name under
+        ``reveal_url_prefix``/css/theme/``reveal_theme``.css.
 
         https://github.com/hakimel/reveal.js/tree/master/css/theme has
         list of themes that ship by default with reveal.js.
+        """
+    ).tag(config=True)
+
+    reveal_transition = Unicode('slide',
+        help="""
+        Name of the reveal.js transition to use.
+
+        The list of transitions that ships by default with reveal.js are:
+        none, fade, slide, convex, concave and zoom.
+        """
+    ).tag(config=True)
+
+    reveal_scroll = Bool(False,
+        help="""
+        If True, enable scrolling within each slide
         """
     ).tag(config=True)
 
@@ -136,7 +157,7 @@ class SlidesExporter(HTMLExporter):
 
     @default('template_file')
     def _template_file_default(self):
-        return 'slides_reveal'
+        return 'slides_reveal.tpl'
 
     output_mimetype = 'text/html'
 
@@ -146,6 +167,8 @@ class SlidesExporter(HTMLExporter):
             resources['reveal'] = {}
         resources['reveal']['url_prefix'] = self.reveal_url_prefix
         resources['reveal']['theme'] = self.reveal_theme
+        resources['reveal']['transition'] = self.reveal_transition
+        resources['reveal']['scroll'] = self.reveal_scroll
         resources['reveal']['require_js_url'] = self.require_js_url
         resources['reveal']['jquery_url'] = self.jquery_url
         resources['reveal']['font_awesome_url'] = self.font_awesome_url

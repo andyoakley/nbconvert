@@ -7,8 +7,10 @@ from .latex import LatexPreprocessor
 from .csshtmlheader import CSSHTMLHeaderPreprocessor
 from .highlightmagics import HighlightMagicsPreprocessor
 from .clearoutput import ClearOutputPreprocessor
-from .execute import ExecutePreprocessor
 from .attachments import AttachmentInlinerPreprocessor
+from .execute import ExecutePreprocessor, CellExecutionError
+from .regexremove import RegexRemovePreprocessor
+from .tagremove import TagRemovePreprocessor
 
 # decorated function Preprocessors
 from .coalescestreams import coalesce_streams

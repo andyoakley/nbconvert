@@ -3,10 +3,13 @@
 # Copyright (c) IPython Development Team.
 # Distributed under the terms of the Modified BSD License.
 
+import re
+
 from .base import ExportersTestsBase
 from ..html import HTMLExporter
+
+from traitlets.config import Config
 from nbformat import v4
-import re
 
 
 class TestHTMLExporter(ExportersTestsBase):
@@ -54,11 +57,31 @@ class TestHTMLExporter(ExportersTestsBase):
         in_regex = r"In&nbsp;\[(.*)\]:"
         out_regex = r"Out\[(.*)\]:"
 
-        ins = ["2", "10", "&nbsp;", "&nbsp;", "*", "0"]
+        ins = ["2", "10", "&nbsp;", "&nbsp;", "0"]
         outs = ["10"]
 
         assert re.findall(in_regex, output) == ins
         assert re.findall(out_regex, output) == outs
+        
+    def test_prompt_number(self):
+        """
+        Does HTMLExporter properly format input and output prompts?
+        """
+        no_prompt_conf = Config(
+            {"TemplateExporter":{
+                "exclude_input_prompt": True,
+                "exclude_output_prompt": True,
+                }
+            }
+        )
+        exporter = HTMLExporter(config=no_prompt_conf, template_file='full')    
+        (output, resources) = exporter.from_filename(
+            self._get_notebook(nb_name="prompt_numbers.ipynb"))
+        in_regex = r"In&nbsp;\[(.*)\]:"
+        out_regex = r"Out\[(.*)\]:"
+
+        assert not re.findall(in_regex, output)
+        assert not re.findall(out_regex, output)
 
     def test_png_metadata(self):
         """
@@ -66,7 +89,11 @@ class TestHTMLExporter(ExportersTestsBase):
         """
         (output, resources) = HTMLExporter(template_file='basic').from_filename(
             self._get_notebook(nb_name="pngmetadata.ipynb"))
-        assert len(output) > 0
+        check_for_png = re.compile(r'<img src="[^"]*?"([^>]*?)>')
+        result = check_for_png.search(output)
+        attr_string = result.group(1)
+        assert 'width' in attr_string
+        assert 'height' in attr_string
 
     def test_javascript_output(self):
         nb = v4.new_notebook(

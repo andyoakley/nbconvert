@@ -4,7 +4,6 @@ and updates outputs"""
 # Copyright (c) IPython Development Team.
 # Distributed under the terms of the Modified BSD License.
 
-import os
 from textwrap import dedent
 
 try:
@@ -12,7 +11,7 @@ try:
 except ImportError:
     from Queue import Empty  # Py 2
 
-from traitlets import List, Unicode, Bool, Enum, Any, Type, default
+from traitlets import List, Unicode, Bool, Enum, Any, Type, Dict, default
 
 from nbformat.v4 import output_from_msg
 from .base import Preprocessor
@@ -40,6 +39,26 @@ class CellExecutionError(ConversionException):
     def __unicode__(self):
         return self.traceback
 
+    @classmethod
+    def from_cell_and_msg(cls, cell, msg):
+        """Instantiate from a code cell object and a message contents
+        (message is either execute_reply or error)
+        """
+        tb = '\n'.join(msg.get('traceback', []))
+        return cls(exec_err_msg.format(cell=cell, traceback=tb,
+                                       ename=msg.get('ename', '<Error>'),
+                                       evalue=msg.get('evalue', '')
+                                      ))
+
+exec_err_msg = u"""\
+An error occurred while executing the following cell:
+------------------
+{cell.source}
+------------------
+
+{traceback}
+{ename}: {evalue}
+"""
 
 class ExecutePreprocessor(Preprocessor):
     """
@@ -88,6 +107,16 @@ class ExecutePreprocessor(Preprocessor):
         )
     ).tag(config=True)
 
+    startup_timeout = Integer(60,
+        help=dedent(
+            """
+            The time to wait (in seconds) for the kernel to start.
+            If kernel startup takes longer, a RuntimeError is
+            raised.
+            """
+        )
+    ).tag(config=True)
+
     allow_errors = Bool(False,
         help=dedent(
             """
@@ -97,6 +126,22 @@ class ExecutePreprocessor(Preprocessor):
             If `True`, execution errors are ignored and the execution
             is continued until the end of the notebook. Output from
             exceptions is included in the cell output in both cases.
+            """
+        )
+    ).tag(config=True)
+
+    force_raise_errors = Bool(False,
+        help=dedent(
+            """
+            If False (default), errors from executing the notebook can be
+            allowed with a `raises-exception` tag on a single cell, or the
+            `allow_errors` configurable option for all cells. An allowed error
+            will be recorded in notebook output, and execution will continue.
+            If an error occurs when it is not explicitly allowed, a
+            `CellExecutionError` will be raised.
+            If True, `CellExecutionError` will be raised for any error that occurs
+            while executing the notebook. This overrides both the
+            `allow_errors` option and the `raises-exception` cell tag.
             """
         )
     ).tag(config=True)
@@ -162,6 +207,16 @@ class ExecutePreprocessor(Preprocessor):
             raise ImportError("`nbconvert --execute` requires the jupyter_client package: `pip install jupyter_client`")
         return KernelManager
 
+    # mapping of locations of outputs with a given display_id
+    # tracks cell index and output index within cell.outputs for
+    # each appearance of the display_id
+    # {
+    #   'display_id': {
+    #     cell_idx: [output_idx,]
+    #   }
+    # }
+    _display_id_map = Dict()
+
     def preprocess(self, nb, resources):
         """
         Preprocess notebook executing each code cell.
@@ -188,10 +243,12 @@ class ExecutePreprocessor(Preprocessor):
         if path == '':
             path = None
 
+        # clear display_id map
+        self._display_id_map = {}
+
         # from jupyter_client.manager import start_new_kernel
 
-        def start_new_kernel(startup_timeout=60, kernel_name='python',
-                             **kwargs):
+        def start_new_kernel(startup_timeout=60, kernel_name='python', **kwargs):
             km = self.kernel_manager_class(kernel_name=kernel_name)
             km.start_kernel(**kwargs)
             kc = km.client()
@@ -210,16 +267,20 @@ class ExecutePreprocessor(Preprocessor):
             kernel_name = self.kernel_name
         self.log.info("Executing notebook with kernel: %s" % kernel_name)
         self.km, self.kc = start_new_kernel(
+            startup_timeout=self.startup_timeout,
             kernel_name=kernel_name,
             extra_arguments=self.extra_arguments,
             cwd=path)
         self.kc.allow_stdin = False
+        self.nb = nb
 
         try:
             nb, resources = super(ExecutePreprocessor, self).preprocess(nb, resources)
         finally:
             self.kc.stop_channels()
             self.km.shutdown_kernel(now=self.shutdown_kernel == 'immediate')
+
+        delattr(self, 'nb')
 
         return nb, resources
 
@@ -229,31 +290,46 @@ class ExecutePreprocessor(Preprocessor):
 
         To execute all cells see :meth:`preprocess`.
         """
-        if cell.cell_type != 'code':
+        if cell.cell_type != 'code' or not cell.source.strip():
             return cell, resources
 
-        outputs = self.run_cell(cell)
+        reply, outputs = self.run_cell(cell, cell_index)
         cell.outputs = outputs
 
-        if not self.allow_errors:
+        cell_allows_errors = (self.allow_errors or "raises-exception"
+                              in cell.metadata.get("tags", []))
+
+        if self.force_raise_errors or not cell_allows_errors:
             for out in outputs:
                 if out.output_type == 'error':
-                    pattern = u"""\
-                        An error occurred while executing the following cell:
-                        ------------------
-                        {cell.source}
-                        ------------------
-
-                        {out.ename}: {out.evalue}
-                        """
-                    msg = dedent(pattern).format(out=out, cell=cell)
-                    raise CellExecutionError(msg)
+                    raise CellExecutionError.from_cell_and_msg(cell, out)
+            if (reply is not None) and reply['content']['status'] == 'error':
+                raise CellExecutionError.from_cell_and_msg(cell, reply['content'])
         return cell, resources
 
+    def _update_display_id(self, display_id, msg):
+        """Update outputs with a given display_id"""
+        if display_id not in self._display_id_map:
+            self.log.debug("display id %r not in %s", display_id, self._display_id_map)
+            return
 
-    def run_cell(self, cell):
-        msg_id = self.kc.execute(cell.source)
-        self.log.debug("Executing cell:\n%s", cell.source)
+        if msg['header']['msg_type'] == 'update_display_data':
+            msg['header']['msg_type'] = 'display_data'
+
+        try:
+            out = output_from_msg(msg)
+        except ValueError:
+            self.log.error("unhandled iopub msg: " + msg['msg_type'])
+            return
+
+        for cell_idx, output_indices in self._display_id_map[display_id].items():
+            cell = self.nb['cells'][cell_idx]
+            outputs = cell['outputs']
+            for output_idx in output_indices:
+                outputs[output_idx]['data'] = out['data']
+                outputs[output_idx]['metadata'] = out['metadata']
+
+    def _wait_for_reply(self, msg_id, cell):
         # wait for finish, with timeout
         while True:
             try:
@@ -280,12 +356,17 @@ class ExecutePreprocessor(Preprocessor):
                     raise exception("Cell execution timed out")
 
             if msg['parent_header'].get('msg_id') == msg_id:
-                break
+                return msg
             else:
                 # not our reply
                 continue
 
-        outs = []
+    def run_cell(self, cell, cell_index=0):
+        msg_id = self.kc.execute(cell.source)
+        self.log.debug("Executing cell:\n%s", cell.source)
+        exec_reply = self._wait_for_reply(msg_id, cell)
+
+        outs = cell.outputs = []
 
         while True:
             try:
@@ -321,16 +402,58 @@ class ExecutePreprocessor(Preprocessor):
             elif msg_type == 'execute_input':
                 continue
             elif msg_type == 'clear_output':
-                outs = []
+                outs[:] = []
+                # clear display_id mapping for this cell
+                for display_id, cell_map in self._display_id_map.items():
+                    if cell_index in cell_map:
+                        cell_map[cell_index] = []
                 continue
             elif msg_type.startswith('comm'):
                 continue
+
+            display_id = None
+            if msg_type in {'execute_result', 'display_data', 'update_display_data'}:
+                display_id = msg['content'].get('transient', {}).get('display_id', None)
+                if display_id:
+                    self._update_display_id(display_id, msg)
+                if msg_type == 'update_display_data':
+                    # update_display_data doesn't get recorded
+                    continue
 
             try:
                 out = output_from_msg(msg)
             except ValueError:
                 self.log.error("unhandled iopub msg: " + msg_type)
-            else:
-                outs.append(out)
+                continue
+            if display_id:
+                # record output index in:
+                #   _display_id_map[display_id][cell_idx]
+                cell_map = self._display_id_map.setdefault(display_id, {})
+                output_idx_list = cell_map.setdefault(cell_index, [])
+                output_idx_list.append(len(outs))
 
-        return outs
+            outs.append(out)
+
+        return exec_reply, outs
+
+
+def executenb(nb, cwd=None, **kwargs):
+    """Execute a notebook's code, updating outputs within the notebook object.
+
+    This is a convenient wrapper around ExecutePreprocessor. It returns the
+    modified notebook object.
+
+    Parameters
+    ----------
+    nb : NotebookNode
+      The notebook object to be executed
+    cwd : str, optional
+      If supplied, the kernel will run in this directory
+    kwargs :
+      Any other options for ExecutePreprocessor, e.g. timeout, kernel_name
+    """
+    resources = {}
+    if cwd is not None:
+        resources['metadata'] = {'path': cwd}
+    ep = ExecutePreprocessor(**kwargs)
+    return ep.preprocess(nb, resources)[0]

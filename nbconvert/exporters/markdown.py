@@ -20,7 +20,7 @@ class MarkdownExporter(TemplateExporter):
 
     @default('template_file')
     def _template_file_default(self):
-        return 'markdown'
+        return 'markdown.tpl'
 
     output_mimetype = 'text/markdown'
 
@@ -42,7 +42,9 @@ class MarkdownExporter(TemplateExporter):
                                           'text/plain'
                                           ]
             },
-
+            'HighlightMagicsPreprocessor': {
+                'enabled':True
+                },
         })
         c.merge(super(MarkdownExporter, self).default_config)
         return c
