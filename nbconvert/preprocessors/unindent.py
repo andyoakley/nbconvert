@@ -13,9 +13,13 @@ class UnindentPreprocessor(Preprocessor):
         Apply a transformation on each cell. See base.py for details.
         """
         if cell.cell_type == 'code':
-            for o in cell.outputs:
-                print(o.data.keys())
-                if 'text/html' in o.data.keys():
-                    print('found')
-                    o.data['text/html'] = o.data['text/html'].replace('\n', '').lstrip(' ')
+            for output in cell.outputs:
+                if 'data' in output:
+                    if 'text/html' in output.data.keys():
+                        output.data['text/html'] = self.strip_leading_spaces(output.data['text/html'])
         return cell, resources
+
+    def strip_leading_spaces(self, html):
+        lines = html.split('\n')
+        lines = [line.lstrip(' ') for line in lines]
+        return ''.join(lines)
