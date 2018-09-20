@@ -44,6 +44,7 @@ class PDFExporter(LatexExporter):
     a temporary directory using the template machinery, and then runs LaTeX
     to create a pdf.
     """
+    export_from_notebook="pdf"
 
     latex_count = Integer(3,
         help="How many times latex will be called."
@@ -61,12 +62,8 @@ class PDFExporter(LatexExporter):
         help="Whether to display the output of latex commands."
     ).tag(config=True)
 
-    temp_file_exts = List(['.aux', '.bbl', '.blg', '.idx', '.log', '.out'],
-        help="File extensions of temp files to remove after running."
-    ).tag(config=True)
-    
     texinputs = Unicode(help="texinputs dir. A notebook's directory is added")
-    writer = Instance("nbconvert.writers.FilesWriter", args=())
+    writer = Instance("nbconvert.writers.FilesWriter", args=(), kw={'build_directory': '.'})
     
     _captured_output = List()
 
@@ -150,21 +147,11 @@ class PDFExporter(LatexExporter):
         filename = os.path.splitext(filename)[0]
 
         def log_error(command, out):
-            self.log.warn('%s had problems, most likely because there were no citations',
+            self.log.warning('%s had problems, most likely because there were no citations',
                 command[0])
             self.log.debug(u"%s output: %s\n%s", command[0], command, out)
 
         return self.run_command(self.bib_command, filename, 1, log_error)
-
-    def clean_temp_files(self, filename):
-        """Remove temporary files created by xelatex/bibtex."""
-        self.log.info("Removing temporary LaTeX files")
-        filename = os.path.splitext(filename)[0]
-        for ext in self.temp_file_exts:
-            try:
-                os.remove(filename+ext)
-            except OSError:
-                pass
     
     def from_notebook_node(self, nb, resources=None, **kw):
         latex, resources = super(PDFExporter, self).from_notebook_node(

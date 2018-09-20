@@ -75,6 +75,8 @@ def prepare(nb):
 class SlidesExporter(HTMLExporter):
     """Exports HTML slides with reveal.js"""
 
+    export_from_notebook = "slides"
+
     reveal_url_prefix = Unicode(
         help="""The URL prefix for reveal.js (version 3.x).
         This defaults to the reveal CDN, but can be any url pointing to a copy 
@@ -82,6 +84,9 @@ class SlidesExporter(HTMLExporter):
         
         For speaker notes to work, this must be a relative path to a local 
         copy of reveal.js: e.g., "reveal.js".
+        
+        If a relative path is given, it must be a subdirectory of the
+        current directory (from which the server is run).
         
         See the usage documentation
         (https://nbconvert.readthedocs.io/en/latest/usage.html#reveal-js-html-slideshow)
@@ -143,7 +148,7 @@ class SlidesExporter(HTMLExporter):
     ).tag(config=True)
 
     font_awesome_url = Unicode(
-        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.1.0/css/font-awesome.css",
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css",
         help="""
         URL to load font awesome from.
 

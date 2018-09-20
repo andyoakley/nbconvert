@@ -16,8 +16,8 @@ name = 'nbconvert'
 import sys
 
 v = sys.version_info
-if v[:2] < (2,7) or (v[0] >= 3 and v[:2] < (3,3)):
-    error = "ERROR: %s requires Python version 2.7 or 3.3 or above." % name
+if v[:2] < (2,7) or (v[0] >= 3 and v[:2] < (3,4)):
+    error = "ERROR: %s requires Python version 2.7 or 3.4 or above." % name
     print(error, file=sys.stderr)
     sys.exit(1)
 
@@ -29,6 +29,7 @@ PY3 = (sys.version_info[0] >= 3)
 
 import os
 import setuptools
+import io
 
 from setuptools.command.bdist_egg import bdist_egg
 
@@ -66,18 +67,19 @@ package_data = {
 }
 
 
-notebook_css_version = '5.1.0'
+notebook_css_version = '5.4.0'
 css_url = "https://cdn.jupyter.org/notebook/%s/style/style.min.css" % notebook_css_version
+
 
 class FetchCSS(Command):
     description = "Fetch Notebook CSS from Jupyter CDN"
     user_options = []
     def initialize_options(self):
         pass
-    
+
     def finalize_options(self):
         pass
-    
+
     def _download(self):
         try:
             return urlopen(css_url).read()
@@ -92,7 +94,7 @@ class FetchCSS(Command):
                     print("Failed, trying again with PycURL to avoid outdated SSL.", file=sys.stderr)
                     return self._download_pycurl()
             raise e
-    
+
     def _download_pycurl(self):
         """Download CSS with pycurl, in case of old SSL (e.g. Python < 2.7.9)."""
         import pycurl
@@ -102,7 +104,7 @@ class FetchCSS(Command):
         c.setopt(c.WRITEDATA, buf)
         c.perform()
         return buf.getvalue()
-    
+
     def run(self):
         dest = os.path.join('nbconvert', 'resources', 'style.min.css')
         if not os.path.exists('.git') and os.path.exists(dest):
@@ -119,22 +121,22 @@ class FetchCSS(Command):
             else:
                 raise OSError("Need Notebook CSS to proceed: %s" % dest)
             return
-        
+
         with open(dest, 'wb') as f:
             f.write(css)
         print("Downloaded Notebook CSS to %s" % dest)
 
 cmdclass = {'css': FetchCSS}
 
+
 class bdist_egg_disabled(bdist_egg):
     """Disabled version of bdist_egg
- 
+
     Prevents setup.py install performing setuptools' default easy_install,
     which it should never ever do.
     """
     def run(self):
         sys.exit("Aborting implicit building of eggs. Use `pip install .` to install from source.")
-
 
 def css_first(command):
     class CSSFirst(command):
@@ -151,23 +153,46 @@ for d, _, _ in os.walk(pjoin(pkg_root, 'templates')):
     g = pjoin(d[len(pkg_root)+1:], '*.*')
     package_data['nbconvert'].append(g)
 
-
 version_ns = {}
 with open(pjoin(here, name, '_version.py')) as f:
     exec(f.read(), {}, version_ns)
 
+with io.open(pjoin(here, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
+
+long_description="""
+
+Nbconvert is a Command Line tool and Python library and API to process and
+convert Jupyter notebook into a variety of other formats.
+
+Using nbconvert enables:
+
+  - presentation of information in familiar formats, such as PDF.
+  - publishing of research using LaTeX and opens the door for embedding notebooks in papers.
+  - collaboration with others who may not use the notebook in their work.
+  - sharing contents with many people via the web using HTML.
+"""
 
 setup_args = dict(
     name            = name,
     description     = "Converting Jupyter Notebooks",
+    long_description_content_type   = 'text/markdown',
     version         = version_ns['__version__'],
     scripts         = glob(pjoin('scripts', '*')),
     packages        = packages,
+    long_description= long_description,
     package_data    = package_data,
     cmdclass        = cmdclass,
+    python_requires = '>=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*',
     author          = 'Jupyter Development Team',
     author_email    = 'jupyter@googlegroups.com',
-    url             = 'http://jupyter.org',
+    url             = 'https://jupyter.org',
+    project_urls={
+        'Documentation': 'https://nbconvert.readthedocs.io/en/latest/',
+        'Funding'      : 'https://numfocus.org/',
+        'Source'       : 'https://github.com/jupyter/nbconvert',
+        'Tracker'      : 'https://github.com/jupyter/nbconvert/issues',
+    },
     license         = 'BSD',
     platforms       = "Linux, Mac OS X, Windows",
     keywords        = ['Interactive', 'Interpreter', 'Shell', 'Web'],
@@ -179,7 +204,10 @@ setup_args = dict(
         'Programming Language :: Python',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
 )
 
@@ -197,12 +225,21 @@ install_requires = setuptools_args['install_requires'] = [
     'testpath',
     'defusedxml',
 ]
+jupyter_client_req = 'jupyter_client>=4.2'
 
 extra_requirements = {
-    'test': ['pytest', 'pytest-cov', 'ipykernel', 'jupyter_client>=4.2'],
+    'test': ['pytest', 'pytest-cov', 'ipykernel', jupyter_client_req],
     'serve': ['tornado>=4.0'],
-    'execute': ['jupyter_client>=4.2'],
+    'execute': [jupyter_client_req],
+    'docs': ['sphinx>=1.5.1',
+             'sphinx_rtd_theme',
+             'nbsphinx>=0.2.12',
+             'sphinxcontrib_github_alt',
+             'ipython',
+             jupyter_client_req,
+             ],
 }
+
 extra_requirements['all'] = sum(extra_requirements.values(), [])
 setuptools_args['extras_require'] = extra_requirements
 
@@ -225,7 +262,7 @@ if 'setuptools' in sys.modules:
             'rst=nbconvert.exporters:RSTExporter',
             'notebook=nbconvert.exporters:NotebookExporter',
             'asciidoc=nbconvert.exporters:ASCIIDocExporter',
-            'script=nbconvert.exporters:ScriptExporter'] 
+            'script=nbconvert.exporters:ScriptExporter']
     }
     setup_args.pop('scripts', None)
 
