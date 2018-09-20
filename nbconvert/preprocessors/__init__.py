@@ -11,6 +11,7 @@ from .execute import ExecutePreprocessor, CellExecutionError
 from .attachments import AttachmentInlinerPreprocessor, ExtractAttachmentPreprocessor
 from .regexremove import RegexRemovePreprocessor
 from .tagremove import TagRemovePreprocessor
+from .unindent import UnindentPreprocessor
 
 # decorated function Preprocessors
 from .coalescestreams import coalesce_streams

@@ -81,6 +81,7 @@ class Exporter(LoggingConfigurable):
                                   'nbconvert.preprocessors.ExtractOutputPreprocessor',
                                   'nbconvert.preprocessors.ExtractAttachmentPreprocessor',
                                   'nbconvert.preprocessors.AttachmentInlinerPreprocessor',
+                                  'nbconvert.preprocessors.UnindentPreprocessor',
                               ],
         help="""List of preprocessors available by default, by name, namespace,
         instance, or type."""

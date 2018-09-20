@@ -46,6 +46,7 @@ class MarkdownExporter(TemplateExporter):
             'HighlightMagicsPreprocessor': {
                 'enabled':True
                 },
+            'UnindentPreprocessor': {'enabled': True},
         })
         c.merge(super(MarkdownExporter, self).default_config)
         return c
